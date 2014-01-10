@@ -1,12 +1,14 @@
 #include "Wiegand.h"
-
+/*
 unsigned long WIEGAND::_cardTempHigh=0;
 unsigned long WIEGAND::_cardTemp=0;
 unsigned long WIEGAND::_lastWiegand=0;
 unsigned long WIEGAND::_sysTick=0;
 unsigned long WIEGAND::_code=0;
-int 		  WIEGAND::_bitCount=0;	
+int 		  WIEGAND::_bitCount=0;
 int			  WIEGAND::_wiegandType=0;
+*/
+WiegandInterface WIEGAND::WiegandInterfaces = NULL;
 
 WIEGAND::WIEGAND()
 {
@@ -22,58 +24,117 @@ int WIEGAND::getWiegandType()
 	return _wiegandType;
 }
 
-bool WIEGAND::available()
+bool WIEGAND::available(byte InterfaceNum)
 {
-	return DoWiegandConversion();
+	return DoWiegandConversion(InterfaceNum);
 }
 
-void WIEGAND::begin()
+void WIEGAND::begin(byte D0Pin, byte D1Pin)
 {
-	_lastWiegand = 0;
-	_cardTempHigh = 0;
-	_cardTemp = 0;
-	_code = 0;
-	_wiegandType = 0;
-	_bitCount = 0;  
-	_sysTick=millis();
+    // Allocate a new interface struct
+    WiegandInterface* newWiegand = malloc(sizeof WiegandInterface);
+    WiegandInterface* lastWiegand = NULL;
+
+    // Initialize
+    newWiegand->D0Pin = D0Pin;
+    newWiegand->D1Pin = D1Pin;
+    newWiegand->lastWiegand = 0;
+	newWiegand->cardTempHigh = 0;
+	newWiegand->cardTemp = 0;
+	newWiegand->code = 0;
+	newWiegand->wiegandType = 0;
+	newWiegand->bitCount = 0;
+	newWiegand->sysTick=millis();
+    newWiegand->pNext = NULL;
+
+    // Store a reference to the interface
+    if (_WiegandInterfaces == NULL)
+    {
+        _WiegandInterfaces = newWiegand
+    }
+    else
+    {
+        lastWiegand = _WiegandInterfaces;
+        while (lastWiegand->pNext != NULL)
+        {
+            lastWiegand = lastWiegand->pNext;
+        }
+        lastWiegand->pNext = newWiegand;
+    }
+
+    // Configure new pins
 	pinMode(D0Pin, INPUT);					// Set D0 pin as input
 	pinMode(D1Pin, INPUT);					// Set D1 pin as input
-	attachInterrupt(0, ReadD0, FALLING);	// Hardware interrupt - high to low pulse
-	attachInterrupt(1, ReadD1, FALLING);	// Hardware interrupt - high to low pulse
+
+	// Attach PinChangeInterrupt handlers for new pings.
+	PCintPort::attachInterrupt(D0Pin, &WIEGAND::ReadD0, FALLING); // PC interrupt - high to low
+	PCintPort::attachInterrupt(D1Pin, &WIEGAND::ReadD1, FALLING); // PC interrupt - high to low
 }
 
 void WIEGAND::ReadD0 ()
 {
-	_bitCount++;				// Increament bit count for Interrupt connected to D0
-	if (_bitCount>31)			// If bit count more than 31, process high bits
+    // Invoked by PinChangeInt - get the D0 pin which invoked us.
+    WiegandInterface* curInterface = _WiegandInterfaces;
+    while (curInterface != NULL)
+    {
+        if (curInterface->D0Pin == arduinoPin)
+        {
+            break;
+        }
+    }
+
+    // Somehow we were invoked for a pin we don't watch.
+    if (curInterface == NULL)
+    {
+        return;
+    }
+
+	curInterface->bitCount++;				// Increament bit count for Interrupt connected to D0
+	if (curInterface->bitCount>31)			// If bit count more than 31, process high bits
 	{
-		_cardTempHigh |= ((0x80000000 & _cardTemp)>>31);	//	shift value to high bits
-		_cardTempHigh <<= 1;
-		_cardTemp <<=1;
+		curInterface->cardTempHigh |= ((0x80000000 & curInterface->cardTemp)>>31);	//	shift value to high bits
+		curInterface->cardTempHigh <<= 1;
+		curInterface->cardTemp <<=1;
 	}
 	else
 	{
-		_cardTemp <<= 1;		// D0 represent binary 0, so just left shift card data
+		curInterface->cardTemp <<= 1;		// D0 represent binary 0, so just left shift card data
 	}
-	_lastWiegand = _sysTick;	// Keep track of last wiegand bit received
+	curInterface->lastWiegand = curInterface->sysTick;	// Keep track of last wiegand bit received
 }
 
 void WIEGAND::ReadD1()
 {
-	_bitCount ++;				// Increment bit count for Interrupt connected to D1
-	if (_bitCount>31)			// If bit count more than 31, process high bits
+    // Invoked by PinChangeInt - get the D1 pin which invoked us.
+    WiegandInterface* curInterface = _WiegandInterfaces;
+    while (curInterface != NULL)
+    {
+        if (curInterface->D1Pin == PCintPort::arduinoPin)
+        {
+            break;
+        }
+    }
+
+    // Somehow we were invoked for a pin we don't watch.
+    if (curInterface == NULL)
+    {
+        return;
+    }
+
+	curInterface->bitCount ++;				// Increment bit count for Interrupt connected to D1
+	if (curInterface->bitCount>31)			// If bit count more than 31, process high bits
 	{
-		_cardTempHigh |= ((0x80000000 & _cardTemp)>>31);	// shift value to high bits
-		_cardTempHigh <<= 1;
-		_cardTemp |= 1;
-		_cardTemp <<=1;
+		curInterface->cardTempHigh |= ((0x80000000 & curInterface->cardTemp)>>31);	// shift value to high bits
+		curInterface->cardTempHigh <<= 1;
+		curInterface->cardTemp |= 1;
+		curInterface->cardTemp <<=1;
 	}
 	else
 	{
-		_cardTemp |= 1;			// D1 represent binary 1, so OR card data with 1 then
-		_cardTemp <<= 1;		// left shift card data
+		curInterface->cardTemp |= 1;			// D1 represent binary 1, so OR card data with 1 then
+		curInterface->cardTemp <<= 1;		// left shift card data
 	}
-	_lastWiegand = _sysTick;	// Keep track of last wiegand bit received
+	curInterface->lastWiegand = curInterface->sysTick;	// Keep track of last wiegand bit received
 }
 
 unsigned long WIEGAND::GetCardId (unsigned long *codehigh, unsigned long *codelow, char bitlength)
@@ -83,63 +144,70 @@ unsigned long WIEGAND::GetCardId (unsigned long *codehigh, unsigned long *codelo
 	if (bitlength==26)								// EM tag
 		cardID = (*codelow & 0x1FFFFFE) >>1;
 
-	if (bitlength==34)								// Mifare 
+	if (bitlength==34)								// Mifare
 	{
 		*codehigh = *codehigh & 0x03;				// only need the 2 LSB of the codehigh
-		*codehigh <<= 30;							// shift 2 LSB to MSB		
+		*codehigh <<= 30;							// shift 2 LSB to MSB
 		*codelow >>=1;
 		cardID = *codehigh | *codelow;
 	}
 	return cardID;
 }
 
-bool WIEGAND::DoWiegandConversion ()
+bool WIEGAND::DoWiegandConversion (byte InterfaceNum)
 {
-	unsigned long cardID;
-	
-	_sysTick=millis();
-	if ((_sysTick - _lastWiegand) > 25)								// if no more signal coming through after 25ms
-	{
-		if ((_bitCount==26) || (_bitCount==34) || (_bitCount==8)) 	// bitCount for keypress=8, Wiegand 26=26, Wiegand 34=34
-		{
-			_cardTemp >>= 1;			// shift right 1 bit to get back the real value - interrupt done 1 left shift in advance
-			if (_bitCount>32)			// bit count more than 32 bits, shift high bits right to make adjustment
-				_cardTempHigh >>= 1;	
+    // Interface num should be the nth linked-list item of Wiegand data.
+    WiegandInterface* cur = _WiegandInterfaces;
+    for (byte i=0; i == InterfaceNum; i++)
+    {
+        cur = cur->pNext;
+    }
 
-			if((_bitCount==26) || (_bitCount==34))		// wiegand 26 or wiegand 34
+	unsigned long cardID;
+
+	cur->sysTick=millis();
+	if ((cur->sysTick - cur->lastWiegand) > 25)								// if no more signal coming through after 25ms
+	{
+		if ((cur->bitCount==26) || (cur->bitCount==34) || (cur->bitCount==8)) 	// bitCount for keypress=8, Wiegand 26=26, Wiegand 34=34
+		{
+			cur->cardTemp >>= 1;			// shift right 1 bit to get back the real value - interrupt done 1 left shift in advance
+			if (cur->bitCount>32)			// bit count more than 32 bits, shift high bits right to make adjustment
+				cur->cardTempHigh >>= 1;
+
+			if((cur->bitCount==26) || (cur->bitCount==34))		// wiegand 26 or wiegand 34
 			{
-				cardID = GetCardId (&_cardTempHigh, &_cardTemp, _bitCount);
-				_wiegandType=_bitCount;
-				_bitCount=0;
-				_cardTemp=0;
-				_cardTempHigh=0;
-				_code=cardID;
-				return true;				
+				cardID = GetCardId (&cur->cardTempHigh, &cur->cardTemp, cur->bitCount);
+				cur->wiegandType=_bitCount;
+				cur->bitCount=0;
+				cur->cardTemp=0;
+				cur->cardTempHigh=0;
+				cur->code=cardID;
+				return true;
 			}
-			else if (_bitCount==8)		// keypress wiegand
+			else if (cur->bitCount==8)		// keypress wiegand
 			{
 				// 8-bit Wiegand keyboard data, high nibble is the "NOT" of low nibble
-				// eg if key 1 pressed, data=E1 in binary 11100001 , high nibble=1110 , low nibble = 0001 
-				char highNibble = (_cardTemp & 0xf0) >>4;
-				char lowNibble = (_cardTemp & 0x0f);
-				_wiegandType=_bitCount;					
-				_bitCount=0;
-				_cardTemp=0;
-				_cardTempHigh=0;
-				
+				// eg if key 1 pressed, data=E1 in binary 11100001 , high nibble=1110 , low nibble = 0001
+				char highNibble = (cur->cardTemp & 0xf0) >>4;
+				char lowNibble = (cur->cardTemp & 0x0f);
+				cur->wiegandType=cur->bitCount;
+				cur->bitCount=0;
+				cur->cardTemp=0;
+				cur->cardTempHigh=0;
+
 				if (lowNibble == (~highNibble & 0x0f))		// check if low nibble matches the "NOT" of high nibble.
 				{
 					if (lowNibble==0x0b)					// ENT pressed
 					{
-						_code=0x0d;							
+						cur->code=0x0d;
 					}
 					else if (lowNibble==0x0a)				// ESC pressed
 					{
-						_code=0x1b;							
+						cur->code=0x1b;
 					}
 					else
 					{
-						_code=(int)lowNibble;				// 0 - 9 keys
+						cur->code=(int)lowNibble;				// 0 - 9 keys
 					}
 					return true;
 				}
@@ -148,12 +216,12 @@ bool WIEGAND::DoWiegandConversion ()
 		else
 		{
 			// well time over 25 ms and bitCount !=8 , !=26, !=34 , must be noise or nothing then.
-			_lastWiegand=_sysTick;
-			_bitCount=0;			
-			_cardTemp=0;
-			_cardTempHigh=0;
+			cur->lastWiegand=cur->sysTick;
+			cur->bitCount=0;
+			cur->cardTemp=0;
+			cur->cardTempHigh=0;
 			return false;
-		}	
+		}
 	}
 	else
 		return false;
