@@ -5,6 +5,8 @@ I have used this library for a personal security project, and needed to add some
 
 The most important feature added is support for using multiple pins with interrupt masking to allow reading from multiple readers (which need to be identified somehow so we know which devices to activate).
 
+This library now requires the PinChangeInt library to function.
+
 # Wiegand 26 and Wiegand 34 library for Arduino
 
 The Wiegand interface is a de facto standard commonly used to connect a card reader or keypad to an electronic entry system. Wiegand interface has the ability to transmit signal over long distance with a simple 3 wires connection. This library uses interrupt pins from Arduino to read the pulses from Wiegand interface and return the code and type of the Wiegand.
@@ -24,14 +26,15 @@ Create a folder named Wiegand in Arduino's libraries folder.  You will have the 
 	cd arduino/libraries
 	mkdir Wiegand
 	cd Wiegand
-	git clone https://github.com/monkeyboard/Wiegand-Protocol-Library-for-Arduino.git .
+	git clone https://github.com/wrouesnel/Wiegand-Protocol-Library-for-Arduino.git .
 
 Note: in forking this project I instead pulled the library into my ~/src folder, and symlinked it to the libraries directory as "Wiegand" under my sketchbook folder.
+
+You also need to install PinChangeInt - it can be obtained from [here] (https://code.google.com/p/arduino-pinchangeint/downloads/detail?name=pinchangeint-v2.19beta.zip&can=2&q=) (2.19beta). Check [here] for updates to it.
 
 ## Arduino Sketch
 
 ![alt text](http://www.monkeyboard.org/images/tutorials/wiegand/wiegand_arduino.png "RFID Reader to Arduino connection diagram")
-
 
 Execute Arduino IDE, select Example-->Wiegand-->WiegandTest
 
@@ -43,11 +46,17 @@ WIEGAND wg;
 
 void setup() {
 	Serial.begin(9600);  
-	wg.begin();
+	wg.begin(2,3);
+	// Note: additional Wiegand listeners can be created by adding more
+	// pin pairs - e.g.
+	// wg.begin(4,5);
 }
 
 void loop() {
-	if(wg.available())
+	// Note: when working with multiple readers, use a for-loop. Their is an
+	// accessor function to return the number of instantiated interfaces:
+	// wg.InterfaceCount()
+	if(wg.available(0))
 	{
 		Serial.print("Wiegand HEX = ");
 		Serial.print(wg.getCode(),HEX);

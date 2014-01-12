@@ -249,3 +249,8 @@ bool WIEGAND::DoWiegandConversion (byte InterfaceNum)
 	else
 		return false;
 }
+
+uint8_t WIEGAND::InterfaceCount()
+{
+	return _InterfaceCount;
+}

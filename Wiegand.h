@@ -44,6 +44,7 @@ public:
 	bool available(byte InterfaceNum);
 	unsigned long getCode(byte InterfaceNum);
 	int getWiegandType(byte InterfaceNum);
+	uint8_t InterfaceCount();
 	
 private:
 	static void ReadD0();

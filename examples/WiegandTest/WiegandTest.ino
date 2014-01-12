@@ -4,11 +4,11 @@ WIEGAND wg;
 
 void setup() {
 	Serial.begin(9600);  
-	wg.begin();
+	wg.begin(2,3);
 }
 
 void loop() {
-	if(wg.available())
+	if(wg.available(0))
 	{
 		Serial.print("Wiegand HEX = ");
 		Serial.print(wg.getCode(),HEX);
