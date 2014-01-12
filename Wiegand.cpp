@@ -1,27 +1,36 @@
 #include "Wiegand.h"
-/*
-unsigned long WIEGAND::_cardTempHigh=0;
-unsigned long WIEGAND::_cardTemp=0;
-unsigned long WIEGAND::_lastWiegand=0;
-unsigned long WIEGAND::_sysTick=0;
-unsigned long WIEGAND::_code=0;
-int 		  WIEGAND::_bitCount=0;
-int			  WIEGAND::_wiegandType=0;
-*/
-WiegandInterface WIEGAND::WiegandInterfaces = NULL;
+
+uint8_t		WIEGAND::_InterfaceCount=0;
+WiegandInterface* WIEGAND::_WiegandInterfaces = NULL;
 
 WIEGAND::WIEGAND()
 {
 }
 
-unsigned long WIEGAND::getCode()
+unsigned long WIEGAND::getCode(byte InterfaceNum)
 {
-	return _code;
+	// Interface num should be the nth linked-list item of Wiegand data.
+    WiegandInterface* cur = _WiegandInterfaces;
+    while (InterfaceNum > 0)
+    {
+        cur = cur->pNext;
+        InterfaceNum--;
+    }
+    
+	return cur->code;
 }
 
-int WIEGAND::getWiegandType()
+int WIEGAND::getWiegandType(byte InterfaceNum)
 {
-	return _wiegandType;
+	// Interface num should be the nth linked-list item of Wiegand data.
+    WiegandInterface* cur = _WiegandInterfaces;
+    while (InterfaceNum > 0)
+    {
+        cur = cur->pNext;
+        InterfaceNum--;
+    }
+    
+	return cur->wiegandType;
 }
 
 bool WIEGAND::available(byte InterfaceNum)
@@ -32,7 +41,7 @@ bool WIEGAND::available(byte InterfaceNum)
 void WIEGAND::begin(byte D0Pin, byte D1Pin)
 {
     // Allocate a new interface struct
-    WiegandInterface* newWiegand = malloc(sizeof WiegandInterface);
+    WiegandInterface* newWiegand = (WiegandInterface*)malloc(sizeof(WiegandInterface));
     WiegandInterface* lastWiegand = NULL;
 
     // Initialize
@@ -50,7 +59,7 @@ void WIEGAND::begin(byte D0Pin, byte D1Pin)
     // Store a reference to the interface
     if (_WiegandInterfaces == NULL)
     {
-        _WiegandInterfaces = newWiegand
+        _WiegandInterfaces = newWiegand;
     }
     else
     {
@@ -64,11 +73,16 @@ void WIEGAND::begin(byte D0Pin, byte D1Pin)
 
     // Configure new pins
 	pinMode(D0Pin, INPUT);					// Set D0 pin as input
+	digitalWrite(D0Pin, HIGH);				// Enable interal pull-up
 	pinMode(D1Pin, INPUT);					// Set D1 pin as input
+	digitalWrite(D1Pin, HIGH);				// Enable internal pull-up
 
 	// Attach PinChangeInterrupt handlers for new pings.
 	PCintPort::attachInterrupt(D0Pin, &WIEGAND::ReadD0, FALLING); // PC interrupt - high to low
 	PCintPort::attachInterrupt(D1Pin, &WIEGAND::ReadD1, FALLING); // PC interrupt - high to low
+	
+	// Increment interface count
+	_InterfaceCount++;
 }
 
 void WIEGAND::ReadD0 ()
@@ -77,10 +91,11 @@ void WIEGAND::ReadD0 ()
     WiegandInterface* curInterface = _WiegandInterfaces;
     while (curInterface != NULL)
     {
-        if (curInterface->D0Pin == arduinoPin)
+        if (curInterface->D0Pin == PCintPort::arduinoPin)
         {
             break;
         }
+        curInterface = curInterface->pNext;
     }
 
     // Somehow we were invoked for a pin we don't watch.
@@ -113,6 +128,7 @@ void WIEGAND::ReadD1()
         {
             break;
         }
+        curInterface = curInterface->pNext;
     }
 
     // Somehow we were invoked for a pin we don't watch.
@@ -156,11 +172,18 @@ unsigned long WIEGAND::GetCardId (unsigned long *codehigh, unsigned long *codelo
 
 bool WIEGAND::DoWiegandConversion (byte InterfaceNum)
 {
-    // Interface num should be the nth linked-list item of Wiegand data.
+	// Interface count is 0-aligned
+	if (InterfaceNum >= _InterfaceCount)
+	{
+		return false;
+	}
+	
+	// Find the right interface struct
     WiegandInterface* cur = _WiegandInterfaces;
-    for (byte i=0; i == InterfaceNum; i++)
+    while (InterfaceNum > 0)
     {
         cur = cur->pNext;
+        InterfaceNum--;
     }
 
 	unsigned long cardID;
@@ -177,7 +200,7 @@ bool WIEGAND::DoWiegandConversion (byte InterfaceNum)
 			if((cur->bitCount==26) || (cur->bitCount==34))		// wiegand 26 or wiegand 34
 			{
 				cardID = GetCardId (&cur->cardTempHigh, &cur->cardTemp, cur->bitCount);
-				cur->wiegandType=_bitCount;
+				cur->wiegandType=cur->bitCount;
 				cur->bitCount=0;
 				cur->cardTemp=0;
 				cur->cardTempHigh=0;

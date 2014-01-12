@@ -1,6 +1,8 @@
 /*
 	This modified version of the Wiegand library depends on the 
-	PinChangeInterrupt library, which must be availabe in your sketchbook.
+	PinChangeInterrupt library, which must be available in your sketchbook.
+	
+	Note: InterfaceNum is 0-based.	
 
 	It uses this library to monitor arbitrary pins for Wiegand data to do D0/D1
 	detection.
@@ -21,9 +23,9 @@
 #endif
 
 // Struct to store Wiegand decode data in.
-typedef struct {
-	byte 			D0Pin;
-	byte 			D1Pin;
+typedef struct structWiegandInterface {
+	uint8_t 		D0Pin;
+	uint8_t 		D1Pin;
 	unsigned long 	cardTempHigh;
 	unsigned long 	cardTemp;
 	unsigned long 	lastWiegand;
@@ -31,7 +33,7 @@ typedef struct {
 	int				bitCount;	
 	int				wiegandType;
 	unsigned long	code;
-	WiegandInterface* pNext;
+	struct structWiegandInterface *pNext;
 } WiegandInterface;
 
 class WIEGAND {
@@ -40,8 +42,8 @@ public:
 	WIEGAND();
 	void begin(byte D0Pin, byte D1Pin);	// Initialize a Wiegand instance
 	bool available(byte InterfaceNum);
-	unsigned long getCode();
-	int getWiegandType();
+	unsigned long getCode(byte InterfaceNum);
+	int getWiegandType(byte InterfaceNum);
 	
 private:
 	static void ReadD0();
@@ -50,6 +52,7 @@ private:
 	static unsigned long GetCardId (unsigned long *codehigh, unsigned long *codelow, char bitlength);
 	
 	static WiegandInterface* _WiegandInterfaces;
+	static uint8_t	_InterfaceCount;
 };
 
 #endif
